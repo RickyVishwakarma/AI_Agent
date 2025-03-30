@@ -8,6 +8,8 @@ import { ChatRequestBody, StreamMessage, StreamMessageType } from "@/lib/types";
 import { createSSEParser } from "@/lib/createSSEParser";
 import { useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
+import { getConvexClient } from "@/lib/convex";
+import WelcomeMessage from "./WelcomeMessage";
 
 interface ChatInterfaceProps {
   chatId: Id<"chats">;
@@ -18,6 +20,7 @@ export default function ChatInterface({ chatId, initialMessages }: ChatInterface
   const [messages, setMessages] = useState<Doc<"messages">[]>(initialMessages);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const [streamedResponse, setStreamedResponse] = useState("");
   const [currentTool, setCurrentTool] = useState<{
@@ -25,7 +28,35 @@ export default function ChatInterface({ chatId, initialMessages }: ChatInterface
     input: unknown;
   } | null>(null);
 
+
   const messageEndRef = useRef<HTMLDivElement>(null);
+
+  const formatToolOutput = (output: unknown) => {
+    if (typeof output === "string") {
+      return output;
+    }
+    return JSON.stringify(output, null, 2);
+  };
+
+const formatTerminalOutput = (
+  tool: string,
+  input: unknown,
+  output: unknown
+) => {
+  const terminalHtml = `<div class="bg-[#1e1e1e] text-white font-mono p-2 rounded-md my-2 overflow-x-auto whitespace-normal max-w-[600px]">
+    <div class = "flex items-center gap-1.5 border-b border-gray-700 pb-1">
+      <span class = "text-red-500">*</span>
+      <span class = "text-yellow-500">*</span>
+      <span class = "text-green-500">*</span>
+      <span class = "text-gray-400 ml-1 text-sm">${tool}</span>
+    </div>
+    <div class = "text-gray-400 mt-1">$ Input</div>
+    <pre class = "text-yellow-400 mt-0.5 whitespace-pre-wrap overflow-x-auto">${formatToolOutput(input)}</pre>
+    <div class = "text-gray-400 mt-2">$ Output</div>
+    <div class = "text-green-400 mt-0.5 whitespace-pre-wrap overflow-x-auto">${formatToolOutput(output)}</div>
+  </div>`;
+  return `---START---\n${terminalHtml}\n---END---`;
+}
 
   const updateChatTitle = useMutation(api.chats.updateTitle);
 
@@ -51,6 +82,7 @@ export default function ChatInterface({ chatId, initialMessages }: ChatInterface
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setError(null); // Clear any previous errors
 
     const trimmedInput = input.trim();
     if (!trimmedInput || isLoading) return;
@@ -97,7 +129,18 @@ export default function ChatInterface({ chatId, initialMessages }: ChatInterface
         body: JSON.stringify(requestBody),
       });
 
-      if (!response.ok) throw new Error(await response.text());
+      if (!response.ok) {
+        const errorText = await response.text();
+        try {
+          const errorJson = JSON.parse(errorText);
+          if (errorJson.error?.message?.includes('credit balance is too low')) {
+            throw new Error('Your API credit balance is too low. Please upgrade your plan or purchase more credits.');
+          }
+        } catch (e) {
+          // If JSON parsing fails, just use the error text
+        }
+        throw new Error(errorText);
+      }
       if (!response.body) throw new Error("No response body available");
 
       // -----------------------HANDLE THE STREAM-----------------------
@@ -135,16 +178,25 @@ export default function ChatInterface({ chatId, initialMessages }: ChatInterface
                 break;
               case StreamMessageType.Done:
                 // Add the completed response to messages
-                const aiMessage: Doc<"messages"> = {
+                const assistantMessage: Doc<"messages"> = {
                   _id: `ai_${Date.now()}`,
                   chatId,
                   content: fullResponse,
                   role: "assistant",
                   createdAt: Date.now(),
                 } as Doc<"messages">;
-                setMessages((prev) => [...prev, aiMessage]);
+
+                const convex = getConvexClient();
+                console.log("DEBUG >> ", fullResponse)
+                await convex.mutation(api.messages.store, {
+                    chatId,
+                    content: fullResponse,
+                    role: "assistant",
+                });
+                // Add the optimistic user message
+                setMessages((prev) => [...prev, optimisticUserMessage, assistantMessage]);
                 setStreamedResponse("");
-                break;
+                return;
               case StreamMessageType.Error:
                 throw new Error(parsed.error);
             }
@@ -158,9 +210,12 @@ export default function ChatInterface({ chatId, initialMessages }: ChatInterface
         prev.filter((msg) => msg._id !== optimisticUserMessage._id)
       );
 
-      setStreamedResponse(
-        `Error: ${error instanceof Error ? error.message : "Unknown error"}`
-      );
+      // Set user-friendly error message
+      if (error instanceof Error && error.message.includes('credit balance is too low')) {
+        setError('Your API credit balance is too low. Please upgrade your plan or purchase more credits.');
+      } else {
+        setError(error instanceof Error ? error.message : 'An error occurred while processing your message');
+      }
     } finally {
       setIsLoading(false);
     }
@@ -171,6 +226,7 @@ export default function ChatInterface({ chatId, initialMessages }: ChatInterface
       {/* Messages */}
       <section className="flex-1 overflow-y-auto p-4">
         <div className="max-w-4xl mx-auto space-y-4">
+          {messages?.length === 0 && <WelcomeMessage/>}
           {/* Messages */}
           {messages.map((message) => (
             <div
@@ -183,6 +239,7 @@ export default function ChatInterface({ chatId, initialMessages }: ChatInterface
             >
               {message.content}
             </div>
+
           ))}
 
           {/* Streamed Response */}
@@ -190,6 +247,42 @@ export default function ChatInterface({ chatId, initialMessages }: ChatInterface
             <div className="bg-gray-100 p-3 rounded-lg mr-auto max-w-[80%]">
               {streamedResponse}
               {isLoading && <span className="animate-pulse">▌</span>}
+            </div>
+          )}
+
+          {/* {Loading indicator} */}
+
+          {isLoading && !streamedResponse && (
+            <div className="flex justify-start animate-in fade-in-0">
+              <div className="rounded-2xl px-4 py-3 bg-white text-gray-900
+                rounded-bl-none shadow-sm ring-1 ring-inset rinf-gray-200 ">
+                  <div className="flex items-center gap-1.5">
+                    {[0.3, 0.15, 0].map((delay, i) => (
+                      <div
+                        key={i}
+                        className="h-1 w-1 rounded-full bg-gray-400 animate-bounce"
+                        style={{ animationDelay: `${delay}s` }}
+                      />
+                    ))}
+                  </div>
+
+              </div>
+
+            </div>
+          )}
+
+          {/* Error Display */}
+          {error && (
+            <div className="flex justify-start animate-in fade-in-0 mb-4">
+              <div className="rounded-2xl px-4 py-3 bg-red-50 text-red-900
+                rounded-bl-none shadow-sm ring-1 ring-inset ring-red-200">
+                <div className="flex items-center gap-2">
+                  <svg className="h-5 w-5 text-red-500" viewBox="0 0 20 20" fill="currentColor">
+                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.28 7.22a.75.75 0 00-1.06 1.06L8.94 10l-1.72 1.72a.75.75 0 101.06 1.06L10 11.06l1.72 1.72a.75.75 0 101.06-1.06L11.06 10l1.72-1.72a.75.75 0 00-1.06-1.06L10 8.94 8.28 7.22z" clipRule="evenodd" />
+                  </svg>
+                  <p className="text-sm font-medium">{error}</p>
+                </div>
+              </div>
             </div>
           )}
 
@@ -238,4 +331,3 @@ export default function ChatInterface({ chatId, initialMessages }: ChatInterface
     </main>
   );
 }
-

@@ -1,5 +1,4 @@
 import { Id } from "@/convex/_generated/dataModel";
-import { FileOutput } from "lucide-react";
 
 export const SSE_DATA_PREFIX = "data: " as const;
 export const SSE_DONE_MESSAGE = "[Done]" as const;
@@ -22,7 +21,7 @@ export interface Message {
 // }
 export interface ChatRequestBody {
     messages: Message[];
-    newMessage: string;  // ✅ Corrected field name
+    newMessage: string;  // Corrected field name
     chatId: Id<"chats">;
 }
 

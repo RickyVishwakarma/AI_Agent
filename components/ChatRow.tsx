@@ -4,6 +4,9 @@ import { useContext } from "react";
 import { useRouter } from "next/navigation";
 import { TrashIcon } from "lucide-react";
 import { Button } from "./ui/button";
+import { useQuery } from "convex/react";
+import { api } from "@/convex/_generated/api";
+import TimeAgo from "react-timeago";
 
 function ChatRow({
     chat,
@@ -14,7 +17,9 @@ function ChatRow({
 }) {
     const router = useRouter();
     const { closeMobileNav } = useContext(NavigationContext);
-
+    const lastMessage = useQuery(api.messages.getLastMessage, {
+        chatId: chat._id,
+    })
     const handleClick = () => {
         router.push(`/dashboard/chat/${chat._id}`);
         closeMobileNav();
@@ -29,6 +34,16 @@ function ChatRow({
         >
             <div className="p-4">
                 <div className="flex justify-between items-center">
+                    <p className="text-sm text-gray-600 truncate flex-1 font-medium">
+                        {lastMessage ? (
+                            <>
+                                {lastMessage.role === "user" ? "You: " : "Assistant: "}
+                                {lastMessage.content.replace(/\n/g, " \n")}
+                            </>
+                        ): (
+                            <span className="text-gray-400">New Conversation</span>
+                        )}
+                    </p>
                     <span className="truncate flex-1">{chat.title}</span>
                     <Button
                         variant="ghost"
@@ -41,6 +56,12 @@ function ChatRow({
                     >
                         <TrashIcon className="h-4 w-4 text-gray-400 hover:text-red-500 transition-colors"/>
                     </Button>
+
+                    {lastMessage && (
+                        <p className="text-sm text-gray-500 truncate">
+                            <TimeAgo date={lastMessage.createdAt}/>
+                        </p>
+                    )}
                 </div>
             </div>
             
