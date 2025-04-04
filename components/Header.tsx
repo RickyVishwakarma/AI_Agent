@@ -1,4 +1,4 @@
-import { Ghost } from "lucide-react";
+
 import { Button } from "./ui/button";
 import { HamburgerMenuIcon } from "@radix-ui/react-icons";
 import { UserButton } from "@clerk/clerk-react";

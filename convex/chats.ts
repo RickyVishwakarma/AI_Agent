@@ -31,8 +31,23 @@ export const createChat = mutation({
 export const deleteChat = mutation({
   args: { id: v.id("chats") },
   handler: async (ctx, args) => {
-    const { id } = args;
-    await ctx.db.delete(id);
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) {
+      throw new Error("Not authenticated");
+    }
+
+    const chat = await ctx.db.get(args.id);
+    if (!chat) {
+      throw new Error("Chat not found");
+    }
+
+    // Check if the user owns this chat
+    if (chat.userId !== identity.subject) {
+      throw new Error("Not authorized");
+    }
+
+    await ctx.db.delete(args.id);
+    return true;
   },
 });
 
@@ -59,7 +74,22 @@ export const listChats = query({
 export const updateTitle = mutation({
   args: { id: v.id("chats"), title: v.string() },
   handler: async (ctx, args) => {
-    const { id, title } = args;
-    await ctx.db.patch(id, { title });
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) {
+      throw new Error("Not authenticated");
+    }
+
+    const chat = await ctx.db.get(args.id);
+    if (!chat) {
+      throw new Error("Chat not found");
+    }
+
+    // Check if the user owns this chat
+    if (chat.userId !== identity.subject) {
+      throw new Error("Not authorized");
+    }
+
+    await ctx.db.patch(args.id, { title: args.title });
+    return true;
   },
 });

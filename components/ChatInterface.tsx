@@ -31,49 +31,9 @@ export default function ChatInterface({ chatId, initialMessages }: ChatInterface
 
   const messageEndRef = useRef<HTMLDivElement>(null);
 
-  const formatToolOutput = (output: unknown) => {
-    if (typeof output === "string") {
-      return output;
-    }
-    return JSON.stringify(output, null, 2);
-  };
-
-const formatTerminalOutput = (
-  tool: string,
-  input: unknown,
-  output: unknown
-) => {
-  const terminalHtml = `<div class="bg-[#1e1e1e] text-white font-mono p-2 rounded-md my-2 overflow-x-auto whitespace-normal max-w-[600px]">
-    <div class = "flex items-center gap-1.5 border-b border-gray-700 pb-1">
-      <span class = "text-red-500">*</span>
-      <span class = "text-yellow-500">*</span>
-      <span class = "text-green-500">*</span>
-      <span class = "text-gray-400 ml-1 text-sm">${tool}</span>
-    </div>
-    <div class = "text-gray-400 mt-1">$ Input</div>
-    <pre class = "text-yellow-400 mt-0.5 whitespace-pre-wrap overflow-x-auto">${formatToolOutput(input)}</pre>
-    <div class = "text-gray-400 mt-2">$ Output</div>
-    <div class = "text-green-400 mt-0.5 whitespace-pre-wrap overflow-x-auto">${formatToolOutput(output)}</div>
-  </div>`;
-  return `---START---\n${terminalHtml}\n---END---`;
-}
-
   const updateChatTitle = useMutation(api.chats.updateTitle);
 
-  const processStream = async (
-    reader : ReadableStreamDefaultReader<Uint8Array>,
-    onChunk: (chunk: string) => Promise<void>
-  ) => {
-    try{
-      while(true){
-        const {done, value} = await reader.read();;
-      if (done) break;
-      await onChunk(new TextDecoder().decode(value));
-      }
-    }finally{
-      reader.releaseLock();
-    }
-  }
+
 
 
   useEffect(() => {
@@ -136,7 +96,7 @@ const formatTerminalOutput = (
           if (errorJson.error?.message?.includes('credit balance is too low')) {
             throw new Error('Your API credit balance is too low. Please upgrade your plan or purchase more credits.');
           }
-        } catch (e) {
+        } catch {
           // If JSON parsing fails, just use the error text
         }
         throw new Error(errorText);
@@ -176,7 +136,7 @@ const formatTerminalOutput = (
               case StreamMessageType.ToolEnd:
                 setCurrentTool(null);
                 break;
-              case StreamMessageType.Done:
+              case StreamMessageType.Done: {
                 // Add the completed response to messages
                 const assistantMessage: Doc<"messages"> = {
                   _id: `ai_${Date.now()}`,
@@ -185,7 +145,7 @@ const formatTerminalOutput = (
                   role: "assistant",
                   createdAt: Date.now(),
                 } as Doc<"messages">;
-
+                
                 const convex = getConvexClient();
                 console.log("DEBUG >> ", fullResponse)
                 await convex.mutation(api.messages.store, {
@@ -196,9 +156,12 @@ const formatTerminalOutput = (
                 // Add the optimistic user message
                 setMessages((prev) => [...prev, optimisticUserMessage, assistantMessage]);
                 setStreamedResponse("");
-                return;
-              case StreamMessageType.Error:
+                break;
+              }
+              case StreamMessageType.Error: {
                 throw new Error(parsed.error);
+                break;
+              }
             }
           }
         }

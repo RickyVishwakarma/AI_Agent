@@ -6,7 +6,7 @@ import { use } from "react";
 import { Button } from "./ui/button";
 import { useMutation, useQuery} from "convex/react";
 import { api } from "@/convex/_generated/api";
-import { title } from "process";
+
 import { Id } from "@/convex/_generated/dataModel";
 import ChatRow from "./ChatRow";
 
@@ -18,20 +18,26 @@ function Sidebar() {
     const createChat = useMutation(api.chats.createChat );
     const deleteChat = useMutation(api.chats.deleteChat);
 
-    const handelClick = () => {
-        // TODO : Route to chat ID page
-        // router.push('/dashboard/chat');
-        closeMobileNav();
-    }
+
 
     const handelNewChat = async () => {
-        const chatId = await createChat({ title: "New chat" });
-        router.push(`/dashboard/chat/${chatId}`);
-        closeMobileNav();
+        try {
+            const chatId = await createChat({ title: "New chat" });
+            router.push(`/dashboard/chat/${chatId}`);
+            closeMobileNav();
+        } catch (error) {
+            console.error("Error creating new chat:", error);
+        }
     }
 
     const handelDeleteChat = async (id: Id<"chats">) => {
         try {
+            const chat = chats?.find(chat => chat._id === id);
+            if (!chat) {
+                console.error("Chat not found in local state");
+                return;
+            }
+
             await deleteChat({ id });
             
             if(window.location.pathname.includes(id)){
