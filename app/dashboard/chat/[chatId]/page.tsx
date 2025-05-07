@@ -12,11 +12,12 @@ interface ChatPageProps {
 }
 
 export default async function ChatPage({ params }: ChatPageProps) {
+
   const { userId } = await auth();
   if (!userId) {
     redirect("/");
   }
-
+  // get convex client and fetch chat and messages
   try {
     const convex = getConvexClient();
     const result = await convex.query(api.messages.list, { chatId: params.chatId });

@@ -41,7 +41,7 @@ export const initialiseModel = async () => {
   
   const model = new ChatAnthropic({
     modelName: "claude-3-5-sonnet-20241022",
-    anthropicApiKey: process.env.ANTHROPHIC_API_KEY, // Fixed typo in environment variable name
+    anthropicApiKey: process.env.ANTHROPIC_API_KEY,
     temperature: 0.7,
     maxTokens: 4096,
     streaming: true,

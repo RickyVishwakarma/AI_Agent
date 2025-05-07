@@ -1,4 +1,3 @@
-
 import { api } from "@/convex/_generated/api";
 import { getConvexClient } from "@/lib/convex";
 import { submitQuestion } from "@/lib/langgraph";
@@ -28,6 +27,24 @@ async function sendSSEMessage(
         console.error('Error sending SSE message:', error);
         throw new Error('Failed to send SSE message');
     }
+}
+
+interface ToolMessageData {
+    content: string;
+    tool_call_id: string;
+    name: string;
+}
+
+interface StreamEvent {
+    event: string;
+    data: {
+        chunk?: {
+            content: Array<{ text?: string }>;
+        };
+        input?: unknown;
+        output?: unknown;
+    };
+    name?: string;
 }
 
 export async function POST(req: Request) {
@@ -81,31 +98,38 @@ export async function POST(req: Request) {
                     const eventStream = await submitQuestion(langchainMessages, chatId);
 
                     for await (const event of eventStream) {
-                        if (event.event === "on_chat_model_stream") {
-                            const token = event.data.chunk;
-                            if (token) {
-                                const text = token.content.at(0)?.["text"];
-
-                                if (text) {
-                                    await sendSSEMessage(writer, {
-                                        type: StreamMessageType.Token,
-                                        token: text,
-                                    });
-                                }
+                        const typedEvent = event as StreamEvent;
+                        if (typedEvent.event === "on_chat_model_stream") {
+                            const token = typedEvent.data.chunk;
+                            if (token?.content?.[0]?.text) {
+                                await sendSSEMessage(writer, {
+                                    type: StreamMessageType.Token,
+                                    token: token.content[0].text,
+                                });
                             }
-                        } else if (event.event === "on_tool_start") {
+                        } else if (typedEvent.event === "on_tool_start") {
                             await sendSSEMessage(writer, {
                                 type: StreamMessageType.ToolStart,
-                                tool: event.name || "unknown",
-                                input: event.data.input,
+                                tool: typedEvent.name || "unknown",
+                                input: typedEvent.data.input,
                             });
-                        } else if (event.event === "on_tool_end") {
-                            const toolMessage = new ToolMessage(event.data.output);
+                        } else if (typedEvent.event === "on_tool_end") {
+                            // Validate and type the tool output data
+                            const toolOutput = typedEvent.data.output as ToolMessageData;
+                            if (!toolOutput || typeof toolOutput.content !== 'string' || typeof toolOutput.tool_call_id !== 'string') {
+                                throw new Error('Invalid tool output format');
+                            }
+
+                            const toolMessage = new ToolMessage({
+                                content: toolOutput.content,
+                                tool_call_id: toolOutput.tool_call_id,
+                                name: toolOutput.name || typedEvent.name || "unknown"
+                            });
 
                             await sendSSEMessage(writer, {
                                 type: StreamMessageType.ToolEnd,
                                 tool: toolMessage.lc_kwargs.name || "unknown",
-                               output: event.data.output,
+                                output: typedEvent.data.output,
                             });
                         }
                     }

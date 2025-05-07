@@ -78,12 +78,15 @@ export default function ChatInterface({ chatId, initialMessages }: ChatInterface
           role: msg.role,
           content: msg.content,
         })),
-        newMessage: trimmedInput, // Using newMessages to match the interface definition
+        newMessage: trimmedInput,
         chatId,
       };
       
-      // Initialize SSE connection
-      const response = await fetch("/api/chat/stream", {
+      // Get the base URL from environment variables or use the current origin
+      const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || window.location.origin;
+      
+      // Initialize SSE connection with absolute URL
+      const response = await fetch(`${baseUrl}/api/chat/stream`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(requestBody),
