@@ -1,5 +1,6 @@
 import { BotIcon } from "lucide-react"
 
+
 function DashboardPage() {
     return (
         <div className="flex-1 flex items-center justify-center p-4">
@@ -40,4 +41,6 @@ function DashboardPage() {
     )
 }
 
+
 export default DashboardPage
+
